@@ -125,14 +125,58 @@ Apache Kafka with Spark:
   Schema - описание того, как данные должны выглядеть. Это использует примитивные типы, а затем Kafka Connect конвертирует это в JSON и AVRO.
   Source Partition - позволяет Kafka Connect знать о том, какой source вы чиатли.
   Source Offset - позволяет Kafka Connect отслеживать до скольки вы читали source partition.
+  Когда connector принимается кластером, workers перебалансируют все connectors and their tasks. То же самое происходит когда количество tasks у connector уменьшается или увеличивается, или когда connector's configuration изменяется. Когда падает task, никакой другой worker ее не берет, это рассматривается как исключительный случай. Failed tasks не перезапускаются автоматически, а только чете framework.
+
+  Flafka - это Kafka Sink, Channel and source в Flume. С версии Flume 1.7 можно передавать Events вместе со schema. В Flume 1.7 сообщения приходить стали ассинхронно, до этого было синхронно, хотя это был настраиваемый параметр. Flume поддерживает Kafka security. Было возвращено использование свойства "request.required.acks" в тех случаях, когда не используется "requiredAcks", раньше было только "requiredAcks". Так же Flume 1.7 поддерживает Kafka 9.0 и более поздние версии.
 
  2) ZooKeeper позволяет достигнуть высокой доступности для Apache Kafka partitions and brokers, as well as a resource manager for the Spark Streaming cluster. Позволяет распределенным системам следовать за сервисами, хранит их состояние и выбирает лидера. Он состоит из нескольких узлов, которые хранят транзакции и информацию об узде, ему почти не нужна вычислительная мощь и RAM. Однако он очень зависит от Disc I/O, следовательно, нам хорошо бы оставить посвященную машину под него, или участок памяти. !!! От ZooKeeper зависит работа Kafka !!!
   
   Хранит все brokers вместе, помогает выбрать лидера для partition, шлет notifications to Kafka, когда произошли какие-то изменения. По дизайну он оперирует только на нечетных числах 3,5,7. Zookeeper имеет под собой лидера(управляет записями) и followers(управляют чтением)(метадата). Но ZooKeeper уже не хранит данные об consumer offset с Kafka > 0.10. 
  
- 3) Spark должен обладать zero data loss, no duplicates, and automatic failover for all component-level failures. Со стороны Kafka мы абсолютно точно получаем at Least Once, из-за того что, если что-то упадет, то Kafka просто перешлет эти сообщения в виде микро батча. Exactly one должен быть достигнут либо как я делал в проекте либо с помощью downstream tolerant.
+ 3) Spark должен обладать zero data loss, no duplicates, and automatic failover for all component-level failures. Со стороны Kafka мы абсолютно точно получаем at Least Once, из-за того что, если что-то упадет, то Kafka просто перешлет эти сообщения в виде микро батча. Exactly one должен быть достигнут либо как я делал в проекте либо с помощью downstream tolerant. Spark Streaming сейчас становится все популярнее.
+  Spark Session - по факту обертка для SparkContext, SQL and Hive Context.
+
+Ignite:
+ A horizontally scalable, fault-tolerant distributed in-memory computing platform for building real-time applications that can process terabytes of data with in-memory speed.
+ Он может использовать RAM не только для кеширования, но и для того чтобы там хранить данные. Пользователь может включить и выключить persistence, если будет включено, то Ignite becomes a distributed, horizontally scalable database that guarantees full data consistency and is resilient to full cluster failures, а иначе Ignite can act as a distributed in-memory database or in-memory data grid. 
+ Ignite Native Persistence is a distributed, ACID, and SQL-compliant disk store.
+ With Ignite Persistence enabled, вам больше не надо заботится об обертке данных и индексов после того как кластер перезапустится, ведь вы не обязаны хранить данные и индексы только в памяти, Durable Memory is tightly coupled with persistence and treats it as a secondary memory tier. И следовательно если какой-то поднабор данных или индексы сотрутся, Durable Memory will take it from the disk.
+ Data stored in Ignite is ACID-compliant both in memory and on disk, making Ignite a strongly consistent system. Ignite transactions work across the network and can span multiple servers.
+ Ignite provides full support for SQL, DDL and DML, allowing users to interact with Ignite using pure SQL without writing any code.
+ The in-memory data grid component in Ignite is a fully transactional distributed key-value store that can scale horizontally across 100s of servers in the cluster. When persistence is enabled, Ignite can also store more data than fits in memory and survive full cluster restarts.
+ В отличие от других БД, Ignite позволяет перемещать легкие вычисления на данные, таким образом collocating computations with data. Как результат, Ignite быстрее расширяется и минимизирует перемещение данных.
+ Ignite гибкий и позволяет работать на кластере, который можно не надобности расширять или уменьшать. Так же можно хранить несколько копий данных, что позволяет говорить о fault-tolerance. If the persistence is enabled, then data stored in Ignite will also survive full cluster failures. При перезапуске кластера Ignite может сразу начать работу, так как загружать данные в память не надо, он будет их туда лениво подгружать.
+ Является in-memory distributed key-value store, может рассматриваться как, partitioned hash map, где каждый cluster node обладает частичкой памяти, таким образом, чем больше мы машин в кластер добавим, тем больше данных сможем сохранить.
+ Не похоже на другие key-value хранилища, Ignite determines data locality using a pluggable hashing algorithm.
+
+ Ignite provides three different modes of cache operation: PARTITIONED, REPLICATED, and LOCAL. A cache mode is configured for each cache.
+  Partitioned - дефолтный способ хранения данных, данные просто разделяются на части и частями равномерно сохраняются на компьютерах, что позволяет нам говорить о том, что весь кластер может рассматриваться как один большой датасет. Имеет преимущество в обновлении, так как обновлять прийдется только один node и в лучшем случае его backup соратника. С другой стороны очень затратное чтение. In order to avoid extra data movement, it is important to always access the data exactly on the node that has that data cached. This approach is called affinity collocation and is strongly recommended when working with partitioned caches. !!! Подходит для хранения большого количества данных и частого обновления !!!
+  REPLICATED копирует все данные между всеми нодами, имеет очень быстрый доступ к данным, но падает perfomance на том, что данные при обновлении приходится обновлять и во всех копиях. !!! Идеален для случаев, когда у нас маленький датасет, и обновления происходят не часто !!!
+  Local самый удобный для всех видов операций. Обладает всеми преимуществами Partition, только проигрывает в том, что если cluster упадет, то все данные потеряются.
+ 
+ Используются в связи со Spark с преимуществом в in-memory store and computing, все происходит быстро и почти без задержки. Так же взаимодействует как и с RDD, так и с DataFrame.
+ IgniteRDD представляет собой некую распределенную таблицу в Ignite. Он может быть создан в пределах Spark Job или на раздельном Ignite cluster. От этого зависит сколько будет жить эти данные. Так же были привнесены первичные и вторичные индексы через Ignite, что позволило выполнять Spark работы быстрее. Это видение кеша прямо сейчас, что значит то, что любые изменения внесенные в данные лежащие в ignite будут тут же отображены в IgniteRDD. RDD partition создается в том же количестве что и Ignite partition, так же предоставляется в Spark информация о том где лежат данные, для того чтобы производить вычисления прям на данных. Из-за того что данные в IgniteRDD не подгружаются, а и пользуются прям в Ignite, то нам не нужно даже их подгружать, можно производить вычисления сразу. При сохранении данных в Ignite, можно использовать пары RDD, по принципу key/value, так же можно сохранить просто value, ключ будет генерироваться сам. Эти операции можно выполнять параллельно. На базе IgniteRDD можно выполнять SQL запросы.
+ The Apache Spark DataFrame API introduced the concept of a schema to describe the data, allowing Spark to manage the schema and organize the data into a tabular format. Вместе с этим привносятся все фишки Catalysis. Ignite расширяет Spark DataFrame, что ведет к более простой разработке и удобному доступу к ней, включены следующие бенефиты: 1) Возможность шарить данные между Spark job, записывая и читая DataFrame с Ignite. 2) Более быстрое выполнение с помощью Ignite SQL engine which include​ advanced indexing and avoid data movement across the network from Ignite to Spark. Filtering выполняется на стороне Ignite, остальное на стороне Spark, отсюда седует что данные все таки грузятся в Spark. Записать в Ignite DataFrame можно способами: Append, Overwrite, ErrorIfExist, Ignore. Если при записи DF будует создана новая таблица, то следующие опции должны быть обозначины: OPTION_CREATE_TABLE_PRIMARY_KEY_FIELDS, OPTION_CREATE_TABLE_PARAMETERS.
+ 
+ Сам по себе состоит из нескольких слоев, один из которых compute grid, занимается вычислением, как Spark. Data grid - отвечает за хранение.
+
+ Есть несколько видов деплоя: Node Singletone - когда деплоится сервис на все node, Cluster Singletone - когда деплоится сервис на один node, но если он упадет, то сервис передеплоится на другой.
+
+ С Apache Ignite 2.0 данные и индексы хранятся off-heap. Support for DDL and alter indexes. 
+
+ При включенной опции Ignite percistance, все данные хранятся на диске, а в памяти хранится по возможности, самые требуемые.
+ Providing proper cache store implementation is important whenever read-through or write-through behavior is desired. Read-through means that data will be read from persistent store whenever it’s not available in cache, and write-through means that data will be automatically persisted whenever it is updated in cache.
 
 
+
+
+
+
+
+
+
+
+ 
 
 
 

@@ -229,7 +229,7 @@ ResourceManager и работу с NodeManager(s) для выполнения и
  Можно размножить Channel в пределах одного Agent двумя способами:
   1) Multiplexing - событие шлются только исходя из предварительно настроенного атрибута. Маппинг на соответствие значений к каналам мб определен в конфигурационном файле.
   2) Replicating - ивент шлется всем Channels.
-SELECT * FROM (SELECT date_format(eventtime, '%Y-%m-%d') AS eventtimeTrunc, event, count(*) AS countRow FROM historySource WHERE processingtime = '2020-04-22 07:56:56.032000' group by date_format(eventtime, '%Y-%m-%d'), event) as abh WHERE abh.countRow IN (SELECT event_count FROM historyTarget WHERE eventtime = abh.eventtimeTrunc)
+
 5. Sqoop:
  Разработан для эффективной трансформации данных между Hadoop и RDBMS.
  Имеет cmd для трансформации данных.
