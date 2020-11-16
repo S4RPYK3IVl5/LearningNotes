@@ -1,0 +1,108 @@
+У нас есть Vertex(Node) and Edges(Relationships).
+Мы имеем Nodes который связаны Relationships друг с другом.
+
+Node в Neo4J это самый главный компонент, так как Node может существовать без Relationships, а наоборот не бывает. Графы отлично понимаются в том, что они являются некими путями и точками, по которым мы решаем идти или нет исходя из свойств этих путей.
+
+Relationships в Neo4J содержат не только информацию о Node которые он связывает, но так же может нести некие свойства. Они должны быть обязательно направленные. Так же они могут содержать weight and type. Type is required. 
+
+Как уже говорилось, главная задача графа это обходить его по node с помощью разных путей, имено как раз процесс поиска таких путей называется traversal. У нас есть множество путей по которым graph может быть исследован, кратчайший, длиннейший и рандомный. В течении traversal node могут проходиться больше чем 1 раз, а relationship только один. Relationships have direction, as well as types so you can identify which relationship you want to traverse.
+
+Graph databases are often used as part of an Enterprise online transaction processing (OLTP) system. Соответсвенно они оптимизированны под работу с транзакциями. Graph не содержит никаких ключей для отражения зависимости между nodes, вместо этого он хранит непосредственное отношение.
+
+The biggest value that graphs bring to an application is their ability to store relationships and connections as first-class entities.
+
+В Neo4J у Node есть Labels. Таким образом мы причисляем разные node к разным группам. 
+В Neo4J Relationship так же имеют label and direction, но писать query я могу не только по определенным  направлениям.
+
+Можно добавлять к Node and Relationship свойства. Эти свойства не обязательно должны быть у всех одни и те же, свойства сами по себе принадлежат к Node самой по себе, а не к Label или ко всем Node сразу.
+
+Cypher: 
+ Язык который позволяет нам элегантно управлять графовыми базами данных. Элегантность заключается в написании запросов как бы это было на английском языке. 
+ 
+ () - такие скобочки представляют Node. Обычно в скобочки помещают какую-то переменную, затем используют ее, но можно так же ничего не помещать, тогда это будет означать что у тип Node не имеет для query значение.
+ 
+ Labels - позволяют нам навесить на node некие имена, которые помогают при группировать и фильтровать nodes.
+ (variable:Label1:Label2) - пример лбъявление node, где имя обозначается без, а label с :.
+ 
+ // - комментарии
+ 
+ CALL db.schema.visualization() - позволяет рассмотреть всю информацию о Node and Relationships.
+ 
+ MATCH(...) - ищет node в графе по определенным Label и присваивает этим node variable. Если не присвоить label, то наши Node просто исчезнут. MATCH (variable:Label {propertyKey: propertyValue}). Может содержать множество условий в match:
+ MATCH (a:Person)-[:ACTED_IN]->(m:Movie), (m)<-[:DIRECTED]-(d:Person) ... .
+  Важно понимать, что когда мы пишем в одном MATCH несколько паттернов, он обходит связи один раз, когда пишем несколько MATCH, он проходит связи несколько раз. Пример:
+  MATCH (valKilmer:Person)-[:ACTED_IN]->(m:Movie)
+  MATCH (actor:Person)-[:ACTED_IN]->(m)
+  WHERE valKilmer.name = 'Val Kilmer'
+  RETURN m.title as movie , actor.name <- тут будет пройден несколько раз 'Val Kilmer' и затем возвращен.
+  _______________________________________
+  MATCH (valKilmer:Person)-[:ACTED_IN]->(m:Movie),
+       (actor:Person)-[:ACTED_IN]->(m)
+  WHERE valKilmer.name = 'Val Kilmer'
+  RETURN m.title as movie , actor.name <- тут будет пройден один раз 'Val Kilmer' и не возврощен.
+  
+ RETURN ... - что-то возвращает.
+ MATCH (p:Person {born: 1965})
+ RETURN p.name, p.born
+ Для того чтобы навесить на возвращаемое значение alias, нужно написать такую конструкцию RETURN variable.propertyKey2 AS alias2.
+
+ ` - используется для определения имен всего чего угодно через пробел. 
+ 
+ У каждой node есть id который создается тогда, когда ее создает граф.
+ CALL db.propertyKeys() - вернуть все property во всем графе.
+
+ Для того чтобы использовать Relationships в query, нужно использовать следующее:
+  ()          // a node
+  ()--()      // 2 nodes have some type of relationship
+  ()-->()     // the first node has a relationship to the second node
+  ()<--()     // the second node has a relationship to the first node
+
+  MATCH (node1)-[:REL_TYPEA | REL_TYPEB]->(node2)
+  RETURN node1, node2
+  
+  У Relationships так же могут быть свойства.
+
+ type() - функция, которая возвращает relationships type. 
+ MATCH (p:Person)-[rel]->(:Movie {title:'The Matrix'})
+ RETURN p.name, type(rel)
+ 
+ Можно приравнивать целые пути к переменной.
+ MATCH  path = (:Person)-[:FOLLOWS]->(:Person)-[:FOLLOWS]->(:Person {name:'Jessica Thompson'})
+ RETURN  path
+
+ WHERE - statement, который позволяет нам указать условия. В его арсенале есть OR, XOR, NOT and AND. Из операций применимы >=, <=, =, =~. exist() - функция использование которой позволяет нам проверить есть ли определенное property в node.
+  Существует множество String related функций которые применимы в Where statement: STARTS WITH, ENDS WITH, and CONTAINS. toLower() - перевест истроку в lower case.
+ IN - тот же смысл что и в SQL.
+
+  MATCH (p:Person)-[:ACTED_IN]->(m:Movie)
+  WHERE m.released = 2008
+  RETURN p, m
+  
+  MATCH (p)
+  WHERE p:Person <- происходит фильтрация label прямо из WHERE clause.
+  RETURN p.name
+  
+  Можно из WHERE исключать целые грабовые пути:
+  MATCH (p:Person)-[:WROTE]->(m:Movie)
+  WHERE NOT exists( (p)-[:DIRECTED]->(m) )
+  RETURN p.name, m.title
+ 
+  Можно работать с List:
+   MATCH (p:Person)
+   WHERE p.born IN [1965, 1970]
+   RETURN p.name as name, p.born as yearBorn
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
